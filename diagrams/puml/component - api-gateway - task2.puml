@@ -1,0 +1,43 @@
+@startuml
+!include <c4/C4_Component.puml>
+
+title Диаграмма компонентов — сервис API gateway — Задание 3
+
+
+' Внешние клиенты
+System_Ext(Clients, "Приложения", "Web/Mobile", "Клиентские приложения")
+
+' Внешние сервисы
+Container(AuthorizationService, "Authorization-service", "Go", "Регистрация, логин, аутентификация пользователей")
+Container(UserService,          "User-service",          "Go", "Управление профилем пользователя")
+Container(BillingService,       "Billing-service",       "Go", "Управление и оплата подписки")
+Container(DeviceService,        "Device-service",        "Go", "Управление устройствами умного дома")
+
+' Контейнер и его компоненты
+Container_Boundary(ApiGateway, "API gateway") {
+  Component(TLS_CORS, "TLS & CORS", "HTTPS", "TLS-терминация и CORS-политики")
+  Component(AdminAPI, "Admin API", "REST/JSON (internal)", "Health/ready, конфиг-релоад, статус кэшей JWKS")
+  Component(JWT_JWKS, "JWT/JWKS Validator", "JWT / OIDC", "Проверка подписи/срока JWT; фоновая загрузка JWKS")
+  Component(RateLimit, "Rate-Limit / WAF", "in-process", "Лимиты запросов, базовый WAF/ACL, бот-защита")
+  Component(Routing, "Routing & Transforms", "Reverse proxy", "Маршрутизация по путям/методам; header/path rewrite")
+}
+
+' Связи клиентов с шлюзом
+Rel(Clients, TLS_CORS, "Проверка токена, маршрутизация запроса", "HTTPS")
+
+' Внутренние связи компонентов шлюза
+Rel(TLS_CORS, JWT_JWKS, "Декод JWT/первичная проверка", "in-process")
+Rel(TLS_CORS, RateLimit, "Ограничить входящий трафик", "in-process")
+Rel(RateLimit, Routing, "Пропуск разрешённых запросов", "in-process")
+
+Rel(AdminAPI, JWT_JWKS, "Показ статуса JWKS/релоад", "in-process / REST")
+Rel(AdminAPI, Routing,  "Hot-reload маршрутов/правил", "in-process / REST")
+Rel(AdminAPI, RateLimit,"Обновление лимитов/ACL", "in-process / REST")
+
+' Взаимодействие с внешними сервисами
+Rel(JWT_JWKS, AuthorizationService, "Обновление ключей (.well-known → jwks.json)", "HTTPS")
+Rel(Routing, UserService,    "Проксирование запросов", "HTTPS (mTLS), REST/JSON")
+Rel(Routing, BillingService, "Проксирование запросов", "HTTPS (mTLS), REST/JSON")
+Rel(Routing, DeviceService,  "Проксирование запросов", "HTTPS (mTLS), REST/JSON / WS upgrade")
+
+@enduml

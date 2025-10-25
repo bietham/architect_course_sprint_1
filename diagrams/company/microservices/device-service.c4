@@ -1,0 +1,134 @@
+model {
+    extend company.backend.device-service {
+        component dev-provisioning 'Provisioning API' {
+        title 'Подключение устройства'
+        summary 'Claim/bind/unbind устройства к дому; первичная регистрация'
+        technology 'REST/JSON (HTTPS)'
+        style {
+            shape rectangle
+        }
+        }
+
+        component dev-cred-issuer 'Credential Issuer' {
+        title 'Выдача учётных данных'
+        summary 'Выпуск device-token или mTLS cert; ротация; ACL брокера'
+        technology 'JWT/PASETO, X.509 mTLS, ACL sync'
+        style {
+            shape rectangle
+        }
+        }
+
+        component dev-command 'Command Dispatcher' {
+        title 'Команды'
+        summary 'REST→MQTT команды, idempotency, ожидание ACK/timeout'
+        technology 'HTTP→MQTT bridge, QoS1'
+        style {
+            shape rectangle
+        }
+        }
+
+        component dev-shadow 'Device State' {
+        title 'Тень устройства'
+        summary 'Последнее состояние, retain; поток обновлений'
+        technology 'Redis/Postgres cache, WS/Server-Sent Events'
+        style {
+            shape storage
+        }
+        }
+
+        component dev-telemetry 'Telemetry Ingest' {
+        title 'Телеметрия'
+        summary 'Приём state/metrics из MQTT; буфер, фильтры, события'
+        technology 'MQTT QoS1, async processing'
+        style {
+            shape rectangle
+        }
+        }
+
+        component dev-registry 'Device Registry & DB' {
+        title 'Функции подключения к бд'
+        summary 'devices, bindings, capabilities, cred/meta; журналы команд'
+        technology 'PostgreSQL'
+        style {
+            shape rectangle
+        }
+        }
+
+
+
+            company.backend.api-gateway -> dev-provisioning 'Проксирование claim/bind/unbind' {
+            technology 'HTTPS (mTLS внутри), REST/JSON'
+            }
+
+            company.backend.api-gateway -> dev-command 'Проксирование команд' {
+            technology 'HTTPS (mTLS внутри), REST/JSON'
+            }
+
+            company.backend.api-gateway -> dev-shadow 'Получение состояния/поток' {
+            technology 'HTTPS (mTLS), REST/JSON / WebSocket'
+            }
+
+            dev-provisioning -> company.backend.user-service.user-authz-helper'Проверка владения и квот' {
+            technology 'REST/JSON (internal)'
+            }
+
+            dev-provisioning -> dev-cred-issuer 'Запрос на выпуск учётных данных' {
+            technology 'in-process call'
+            }
+
+            dev-cred-issuer -> company.mqttBroker 'Синхронизация ACL/учёток брокера' {
+            technology 'MQTT broker admin API / plugin'
+            }
+
+            dev-cred-issuer -> dev-registry 'Сохранение cred/bindings' {
+            technology 'SQL (Postgres)'
+            }
+
+            dev-command -> company.mqttBroker'Публикация команд устройству' {
+            technology 'MQTT publish (QoS1)'
+            }
+
+            company.mqttBroker -> dev-command 'Получение ACK/результатов' {
+            technology 'MQTT subscribe'
+            }
+
+            company.mqttBroker -> dev-telemetry 'Поставка state/telemetry' {
+            technology 'MQTT subscribe (QoS1, retain)'
+            }
+
+            dev-telemetry -> dev-shadow 'Обновление тени (последнего состояния)' {
+            technology 'in-process / cache update'
+            }
+
+            dev-shadow -> dev-registry 'Чтение/запись состояния/мета' {
+            technology 'SQL (Postgres) / Redis'
+            }
+
+            dev-command -> dev-registry 'Логирование команд/результатов' {
+            technology 'SQL (Postgres)'
+            }
+
+            dev-provisioning -> dev-registry 'Создание/обновление записи устройства' {
+            technology 'SQL (Postgres)'
+            }
+
+            dev-registry -> company.database 'Вызов функций в бд' {
+                technology 'SQL (Postgres)'
+            }
+
+            dev-telemetry -> company.event-bus 'Публикация событий состояния/алертов' {
+            technology 'Kafka/NATS: DeviceStateChanged, DeviceAlert'
+            }
+
+            dev-provisioning -> company.event-bus 'События пары/отвязки' {
+            technology 'Kafka/NATS: DevicePaired, DeviceUnpaired'
+            }
+    }
+}
+
+views {
+    view device-service of company.backend.device-service {
+        title 'Диагармма компонентов - сервис устройств - Задание 3'
+        include *
+    }
+}

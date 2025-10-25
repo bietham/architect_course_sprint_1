@@ -1,0 +1,42 @@
+@startuml
+title API Gateway — JWT Validation via JWKS
+
+actor Client
+participant "API Gateway\n(TLS & JWT Validator)" as GW
+participant "JWKS Cache" as Cache
+participant "Authorization Service\n(JWKS Publisher)" as IAM
+participant "Backend Service" as SVC
+
+== Запрос ==
+Client -> GW: HTTPS request with Authorization: Bearer <JWT>
+GW -> Cache: get(kid) public key?
+
+alt key in cache
+  Cache --> GW: public key
+else key missing/expired
+  GW -> IAM: GET /.well-known → /jwks.json
+  IAM --> GW: JWK Set (ETag, max-age)
+  GW -> Cache: upsert keys (by kid)
+  Cache --> GW: public key (by kid)
+end
+
+== Проверка ==
+GW -> GW: verify signature (alg pinned)\ncheck iss/aud/exp/nbf/iat (with leeway)
+alt invalid token
+  GW --> Client: 401 Unauthorized\nWWW-Authenticate: Bearer error="invalid_token"
+else valid
+  GW -> SVC: forward request (+verified claims headers)\n(mTLS/HTTP2 internal)
+  SVC --> GW: response
+  GW --> Client: response
+end
+
+== Фоновая ротация ==
+... periodically ...
+GW -> IAM: conditional GET /jwks.json (If-None-Match)
+IAM --> GW: 304 Not Modified or 200 New Keys
+GW -> Cache: rotate/overlap keys
+
+note right
+Локальная проверка 
+end note
+@enduml

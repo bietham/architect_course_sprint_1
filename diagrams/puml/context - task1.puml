@@ -1,0 +1,40 @@
+@startuml
+!include <c4/C4_Container.puml>
+
+title Диаграмма контекста - Задание 1
+
+
+' ===== Внешний участник =====
+Person(Customer, "Клиент", "")
+
+' ===== Граница системы =====
+Enterprise_Boundary(Company, "Умный дом") {
+
+  Person(CompanyTechnician, "Специалист по подключению", "")
+
+  System_Boundary(CompanyApp, "Приложения") {
+    Container(CompanyAppMobileApp, "Мобильное приложение", "iOS/Android", "Клиентский интерфейс")
+    Container(CompanyAppWebApp, "Веб-приложение", "Web", "Клиентский интерфейс")
+  }
+
+  System(CompanyBackend, "smart-home app", "Go", "Монолитное приложение на Go")
+  ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Контейнер для основной базы данных умного дома")
+
+  System_Ext(CompanySensor, "Датчик умного дома", "Embedded", "Устройства, подключаемые к системе")
+}
+
+' ===== Связи =====
+Rel(CompanyTechnician, CompanyBackend, "Записывает информацию о датчиках")
+Rel(CompanyTechnician, CompanySensor, "Устанавливает датчики")
+Rel(CompanyBackend, CompanyDatabase, "Читает и обновляет информацию о датчиках")
+Rel(CompanyBackend, CompanySensor, "Запрашивает значение температуры")
+
+Rel(CompanyTechnician, Customer, "Приходит домой для установки")
+
+Rel(Customer, CompanyAppMobileApp, "Использует мобильное приложение", "HTTPS")
+Rel(Customer, CompanyAppWebApp,   "Использует веб-интерфейс", "HTTPS")
+
+Rel(CompanyAppMobileApp, CompanyBackend, "[...]", "HTTPS")
+Rel(CompanyAppWebApp,   CompanyBackend, "[...]", "HTTPS")
+
+@enduml

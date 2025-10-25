@@ -1,0 +1,50 @@
+@startuml
+!include <c4/C4_Component.puml>
+
+title Диаграмма компонентов — сервис подписок — Задание 3
+
+
+' ===== Внешние системы/контейнеры =====
+System_Ext(Banking, "Платежная система", "HTTPS", "Внешняя система для обработки платежей")
+Container(CompanyBackendApiGateway, "API gateway", "Go", "Валидация и маршрутизация запросов")
+ContainerQueue(CompanyBackendEventBus, "Event-bus", "Kafka / NATS", "Коммуникация между сервисами")
+ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Основная БД умного дома")
+
+' ===== Контейнер сервиса подписок и его компоненты =====
+Container_Boundary(CompanyBackendBillingService, "Сервис подписок (Billing-service)") {
+  Component(Bill_Webhooks, "Webhook Receiver", "REST/JSON (HMAC/строковая подпись)","Приём событий оплаты/подписок; верификация подписи; идемпотентность")
+
+  Component(Bill_Plans, "Plan Catalog", "REST/JSON","Витрина тарифов/цен; публичное чтение")
+
+  Component(Bill_Checkout, "Checkout/Portal Adapter", "HTTPS SDK/REST провайдера (Stripe/ЮKassa/Adyen)","Создание checkout-сессий; ссылки в клиентский портал провайдера")
+
+  Component(Bill_Subs, "Subscription Manager", "Domain logic + scheduler (in-process)","Создание/обновление подписок, grace-доступ, dunning/повторы списаний")
+
+  Component(Bill_Ent, "Entitlements API", "REST/JSON","Расчёт и выдача прав (features/limits) по household; снапшоты и кэш")
+
+  ComponentDb(Bill_DB, "Billing DB", "PostgreSQL (+ Redis кэш прав)","plans, subscriptions, invoices/payments, entitlements")
+}
+
+' ===== Взаимодействие с внешней платёжной системой =====
+Rel(Banking, Bill_Webhooks, "События оплаты/подписок", "HTTPS POST (подписанные вебхуки)")
+Rel(Bill_Checkout, Banking, "Создание checkout/portal-сессии", "HTTPS SDK/REST")
+
+' ===== Доступ через API gateway =====
+Rel(CompanyBackendApiGateway, Bill_Plans,    "Проксирование витрины тарифов", "HTTPS (mTLS), REST/JSON")
+Rel(CompanyBackendApiGateway, Bill_Checkout, "Создание оплаты/портала",       "HTTPS (mTLS), REST/JSON")
+Rel(CompanyBackendApiGateway, Bill_Ent,      "Получение прав/квот",           "HTTPS (mTLS), REST/JSON")
+
+' ===== Внутренние связи сервиса подписок =====
+Rel(Bill_Plans, Bill_DB, "Чтение планов/цен", "SQL (PostgreSQL)")
+Rel(Bill_Webhooks, Bill_Subs, "Применение событий (идемпотентно)", "in-process")
+Rel(Bill_Subs, Bill_Ent, "Пересчёт прав после изменения подписки", "in-process")
+Rel(Bill_Subs, Bill_DB, "Запись/обновление подписок, счетов", "SQL (PostgreSQL)")
+Rel(Bill_Ent,  Bill_DB, "Чтение/запись снапшотов прав", "SQL (PostgreSQL) + Redis cache")
+
+' ===== Публикация событий =====
+Rel(Bill_Subs, CompanyBackendEventBus, "Публикация событий: SubscriptionActivated/Updated/Canceled, EntitlementsChanged", "Kafka/NATS")
+
+' ===== Доступ к общей БД (функции/хранилище) =====
+Rel(Bill_DB, CompanyDatabase, "Вызов функций в хранилище", "SQL (PostgreSQL)")
+
+@enduml

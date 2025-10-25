@@ -1,0 +1,105 @@
+model {
+    extend company.backend.authorization-service {
+        component authz-authorization 'Authorization Endpoint' {
+        title 'OIDC Authorization'
+        summary 'Логин/SSO, PKCE, consent, MFA-промпт'
+        technology 'OIDC Authorization Code + PKCE'
+        style {
+            shape rectangle
+        }
+        }
+
+        component authz-token 'Token Endpoint' {
+        title 'Token Issuer'
+        summary 'Выдача access/refresh/id_token; rotation/revoke; introspect'
+        technology 'OAuth2.1: authorization_code, refresh_token, client_credentials, token_exchange'
+        style {
+            shape rectangle
+        }
+        }
+
+        component authz-jwks 'JWKS Publisher' {
+        title 'JWKS/Discovery'
+        summary 'Публикация /.well-known и /jwks.json; ротация ключей'
+        technology 'RFC 8414, RFC 7517 (JWK Set), RS256/ES256'
+        style {
+            shape rectangle
+        }
+        }
+
+        component authz-usercreds 'User & Credentials Store' {
+        title 'Функции подключкения к бд'
+        summary 'Учётки, статусы; password hash, passkeys/WebAuthn, соц-аккаунты'
+        technology 'Postgres (users, creds)'
+        }
+
+        component authz-session 'Session/Refresh Manager' {
+        title 'Сессии/ревокация'
+        summary 'Хранение и ротация refresh, deny-list, TTL, device sessions'
+        technology 'Redis (sessions/deny-list), expiring keys'
+        style {
+            shape storage
+        }
+        }
+
+        component authz-mfa 'MFA & Notifications' {
+        title 'MFA и письма'
+        summary 'TOTP/SMS/email MFA; письма верификации/алерты безопасности'
+        technology 'WebAuthn/TOTP; SMTP/SMS провайдер'
+        style {
+            shape rectangle
+        }
+        }
+
+        
+
+        authz-authorization -> authz-usercreds 'Проверка учётки/статуса' {
+        technology 'in-process + Postgres'
+        }
+
+        authz-authorization -> authz-mfa 'Шаг MFA/верификации email' {
+        technology 'in-process'
+        }
+
+        authz-mfa -> mailing 'Отправка кода/ссылки' {
+        technology 'SMTP/REST'
+        }
+
+        
+        authz-token -> authz-usercreds 'Вычитывание пользователя' {
+        technology 'in-process + Postgres'
+        }
+        authz-usercreds -> company.database "Адресация запросов к хранилищу" {
+            technology 'TCP/IP'
+        }
+
+        authz-token -> authz-session 'Создание/ротация refresh; ревокация' {
+        technology 'Redis (SETEX, DEL), rotation'
+        }
+
+        authz-jwks -> authz-token 'Доступ к приватным ключам/ротация' {
+        technology 'in-process (KMS/HSM), key rollover'
+        }
+
+        authz-token -> company.event-bus 'События входа/ревокации' {
+        technology 'Kafka/NATS (UserLoggedIn, TokenRevoked)'
+        }
+
+        authz-authorization -> company.event-bus 'События регистрации/смены email' {
+        technology 'Kafka/NATS (UserRegistered, EmailChanged)'
+        }
+
+        authz-token -> authz-session 'Отметить refresh как отозванный' {
+        technology 'Redis (deny-list)'
+        }
+
+    }
+}
+
+views {
+    view auth-service of company.backend.authorization-service {
+        title 'Диаграмма компонентов - сервис авторизации - Задание 3'
+        include *,
+        company.api-gateway
+    }
+}

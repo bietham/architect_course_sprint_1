@@ -1,0 +1,186 @@
+@startuml
+' ER / crow's foot
+hide methods
+skinparam linetype ortho
+left to right direction
+
+
+' СУЩНОСТИ ПОЛЬЗОВАТЕЛЕЙ/ДОМОВ']
+
+
+entity "User" as user {
+  * id : UUID
+  --
+  email : varchar(320) <<unique>>
+  email_verified : boolean
+  display_name : varchar(120)
+  locale : varchar(16)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "House" as house {
+  * id : UUID
+  --
+  owner_user_id : UUID <<FK user.id>>
+  name : varchar(120)
+  address : text?
+  timezone : varchar(64)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "Room" as room {
+  * id : UUID
+  --
+  house_id : UUID <<FK house.id>>
+  name : varchar(120)
+  floor : int?
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+
+' УСТРОЙСТВА / ТИПЫ / МОДУЛИ
+
+
+entity "DeviceType" as devtype {
+  * id : UUID
+  --
+  vendor : varchar(120)
+  model  : varchar(120)
+  kind   : varchar(64)   ' sensor, switch, thermostat...
+  capabilities : jsonb   ' перечень поддерживаемых операций/метрик
+  created_at : timestamptz
+}
+
+entity "Device" as device {
+  * id : UUID
+  --
+  device_type_id : UUID <<FK devtype.id>>
+  house_id  : UUID <<FK house.id>>
+  room_id   : UUID? <<FK room.id>>
+  serial_number : varchar(128) <<unique>>
+  status : varchar(32)         ' online/offline/fault/disabled
+  last_seen_at : timestamptz?
+  meta : jsonb                 ' произв. параметры (fw, ip и т.п.)
+  created_at : timestamptz
+  updated_at : timestamptz
+}
+
+entity "ModuleType" as modtype {
+  * id : UUID
+  --
+  code : varchar(64)  <<unique>> ' e.g., "switch", "temp-sensor"
+  spec : jsonb     ' схема команд/метрик для модуля
+}
+
+entity "Module" as module {
+  * id : UUID
+  --
+  device_id   : UUID <<FK device.id>>
+  module_type_id : UUID <<FK modtype.id>>
+  label : varchar(120)?
+  index : int        ' если у девайса несколько однотипных модулей
+  created_at : timestamptz
+}
+
+
+' ТЕЛЕМЕТРИЯ / СОСТОЯНИЕ / КОМАНДЫ
+
+
+entity "TelemetryData" as telem {
+  * id : bigint
+  --
+  device_id : UUID <<FK device.id>>
+  module_id : UUID? <<FK module.id>>
+  ts : timestamptz  ' время измерения
+  metric : varchar(64) ' e.g., temperature, power, humidity
+  value_num : double?  ' числовые значения
+  value_str : varchar(256)?
+  value_json: jsonb?   ' сложные структуры
+  unit : varchar(16)?
+  idx  : bigint        ' порядковый номер (для быстрой выборки)
+}
+
+
+entity "Command" as cmd {
+  * id : UUID
+  --
+  device_id : UUID <<FK device.id>>
+  module_id : UUID? <<FK module.id>>
+  op   : varchar(64) ' операция: switch.set, level.set...
+  payload : jsonb
+  status  : varchar(32) ' queued/sent/acked/failed/timeout
+  idempotency_key : varchar(128)?
+  created_at : timestamptz
+  sent_at    : timestamptz?
+  completed_at : timestamptz?
+}
+
+
+
+' ПОДКЛЮЧЕНИЕ УСТРОЙСТВ
+
+
+entity "PairingClaim" as claim {
+  * claim_code : varchar(64) <<PK>>
+  --
+  serial_number : varchar(128)
+  house_id : UUID <<FK house.id>>
+  expires_at : timestamptz
+  used_at    : timestamptz?
+  device_id  : UUID? <<FK device.id>> ' связывается после успешного claim
+}
+
+
+' ПОДПИСКИ / ПРАВА
+
+
+entity "SubscriptionPlan" as plan {
+  * id : UUID
+  --
+  code : varchar(64) <<unique>>
+  name : varchar(120)
+  period : varchar(16) ' month/year
+  price_cents : int
+  currency : char(3)
+  features : jsonb  ' список доступных фич
+  limits   : jsonb  ' лимиты (max_devices, automations, etc.)
+}
+
+entity "Subscription" as sub {
+  * id : UUID
+  --
+  house_id : UUID <<FK house.id>>
+  plan_id  : UUID <<FK plan.id>>
+  status   : varchar(32) ' active/past_due/canceled
+  current_period_end : timestamptz
+  provider_ref : varchar(128)?
+  created_at : timestamptz
+}
+
+' СВЯЗИ 
+
+user ||--o{ house : "владеет"
+house ||--o{ room  : "содержит"
+house ||--o{ device : "содержит"
+room  |o--o{ device : "вмещает"
+
+devtype ||--o{ device : "тип девайса"
+device  ||--o{ module : "имеет модули"
+modtype ||--o{ module : "тип модуля"
+
+device  ||--o{ telem  : "генерирует"
+module  |o--o{ telem  : "детализирует"
+
+device  ||--o{ cmd    : "получает команды"
+
+house   ||--o{ sub    : "подписан на план"
+plan    ||--o{ sub    : "используется в подписке"
+
+house   ||--o{ claim  : "создаёт коды привязки"
+claim   }o--|| device : "результат привязки "
+
+
+@enduml

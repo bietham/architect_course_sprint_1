@@ -1,0 +1,45 @@
+@startuml
+!include <c4/C4_Component.puml>
+
+title Диаграмма компонентов — сервис профиля — Задание 3
+
+' ===== Внешние контейнеры/системы =====
+Container(CompanyBackendApiGateway, "API gateway", "Go", "Валидация и маршрутизация запросов")
+Container(CompanyBackendDeviceService, "Device-service", "Go", "Управление устройствами умного дома")
+Container(CompanyBackendCallcenterService, "Callcenter-service", "Go", "Инциденты и чаты с пользователем")
+ContainerQueue(CompanyBackendEventBus, "Event-bus", "Kafka / NATS", "Коммуникация между сервисами")
+Container(CompanyBackendBillingService, "Billing-service", "Go", "Управление и оплата подписки")
+ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Основная БД умного дома")
+
+' ===== Контейнер сервиса профиля и его компоненты =====
+Container_Boundary(CompanyBackendUserService, "Сервис профиля (User-service)") {
+  Component(UserProfileAPI, "Profile API", "REST/JSON", "CRUD профиля: имя, аватар, локаль; /me")
+
+  Component(UserHousehold, "Household Manager", "REST/JSON", "Создание/изменение своих домов/помещений (без ролей и приглашений)")
+
+  Component(UserAuthZHelper, "AuthZ Helper", "REST/JSON или gRPC (internal), кэш entitlements", "Проверка владения ресурсом (owner-only) и лимитов по подписке")
+
+  ComponentDb(UserDB, "User DB", "PostgreSQL", "profiles, households")
+}
+
+' ===== Связи через API gateway =====
+Rel(CompanyBackendApiGateway, UserProfileAPI, "Проксирование запросов", "HTTPS (mTLS), REST/JSON")
+Rel(CompanyBackendApiGateway, UserHousehold,  "Проксирование запросов", "HTTPS (mTLS), REST/JSON")
+
+' ===== Взаимодействие других сервисов с User-service =====
+Rel(CompanyBackendDeviceService,    UserAuthZHelper, "Проверка владения и квот", "REST/JSON (internal)")
+Rel(CompanyBackendCallcenterService,UserProfileAPI,  "Доп. сведения о клиенте/доме (опц.)", "REST/JSON (internal)")
+
+' ===== Подписки/инвалидации из шины событий =====
+Rel(CompanyBackendEventBus, UserProfileAPI,  "Синхронизация профиля (e-mail, статус)", "Kafka/NATS (consumer)")
+Rel(CompanyBackendEventBus, UserAuthZHelper, "Инвалидация кэша прав", "Kafka/NATS (consumer)")
+
+' ===== Доступ к хранению данных =====
+Rel(UserProfileAPI, UserDB, "Хранение/чтение профилей", "SQL (PostgreSQL)")
+Rel(UserHousehold,  UserAuthZHelper, "Проверка владения и лимитов", "in-process call")
+Rel(UserHousehold,  UserDB, "Хранение/чтение домов", "SQL (PostgreSQL)")
+Rel(UserAuthZHelper, CompanyBackendBillingService, "Получить/обновить entitlements при промахе кэша", "HTTPS REST/JSON")
+Rel(UserAuthZHelper, CompanyBackendDeviceService,  "Проверка прав на действия с устройствами", "REST/JSON или gRPC (internal)")
+Rel(UserDB, CompanyDatabase, "Вызов функций БД", "TCP/IP")
+
+@enduml

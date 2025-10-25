@@ -1,0 +1,84 @@
+@startuml
+!include <c4/C4_Container.puml>
+
+
+
+' === Кастомные стили по тегам ===
+
+' === Внешние системы ===
+System_Ext(Mailing, "Внешний email провайдер", "SMTP/REST", "Отправка email с OTP кодом клиентам")
+System_Ext(Banking, "Платежная система", "HTTPS", "Внешняя система для обработки платежей")
+
+' === Пользователи ===
+Person(Customer, "Клиент", "")
+
+
+' === Граница системы ===
+System_Boundary(Company, "Умный дом") {
+
+    Person(CompanyOperator, "Оператор поддержки", "")
+
+  Container(CompanyApp, "Приложения", "Web/Mobile", "Приложения")
+
+  Container_Boundary(Backend, "backend") {
+    Container(ApiGateway, "API gateway", "Go", "Валидация и маршрутизация запросов")
+    Container(AuthService, "Authorization-service", "Go", "Регистрация, логин, аутентификация пользователей")
+    Container(CallcenterService, "Callcenter-service", "Go", "Инциденты и чаты с пользователями")
+
+    ContainerQueue(EventBus, "Event-bus", "Kafka / NATS", "Коммуникация между сервисами")
+
+    Container(UserService, "User-service", "Go", "Управление профилем пользователя")
+    Container(BillingService, "Billing-service", "Go", "Управление и оплата подписки")
+    Container(DeviceService, "Device-service", "Go", "Управление устройствами умного дома")
+
+    ContainerQueue(MqttBroker, "MQTT брокер", "EMQX / MQTT", "Коммуникация устройств и сервиса устройств")
+  }
+
+  ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Основная БД умного дома")
+
+  ' Сенсоры — как внешняя подсистема на схеме
+  System_Ext(CompanySensor, "Датчик умного дома", "Embedded", "Устройства, подключаемые к системе")
+}
+
+' === Связи ===
+Rel(Customer, CompanyApp, "[...]", "HTTPS")
+Rel(CompanyOperator, CompanyApp, "Использует веб-интерфейс для поддержки", "HTTPS")
+
+Rel(Mailing, CompanyApp, "Отправка кода/ссылки клиенту", "SMTP")
+Rel(Banking, BillingService, "События оплаты/подписок (подписанные вебхуки)", "HTTPS")
+
+Rel(CompanyApp, CompanySensor, "Подключение к умному дому", "BLE")
+Rel(CompanyApp, ApiGateway, "[...]", "HTTPS")
+Rel(CompanyApp, AuthService, "Клиентские запросы к authorization-service", "HTTPS")
+
+Rel(AuthService, Mailing, "Отправка кода/ссылки", "SMTP/REST")
+Rel(AuthService, CompanyDatabase, "Данные об авторизации пользователя", "SQL")
+
+Rel(UserService, CompanyDatabase, "Данные пользователя", "SQL")
+
+Rel(BillingService, Banking, "Обработка платежей", "HTTPS")
+Rel(BillingService, CompanyDatabase, "Данные о подписке", "SQL")
+Rel(BillingService, EventBus, "Публикация событий: SubscriptionActivated/Updated/Canceled, EntitlementsChanged", "Kafka/NATS")
+
+Rel(DeviceService, CompanyDatabase, "Данные об устройствах", "SQL")
+Rel(DeviceService, MqttBroker, "Управление устройствами, телеметрия", "MQTT")
+Rel(DeviceService, EventBus, "[...]", "Kafka/NATS")
+
+Rel(CallcenterService, Mailing, "Отправка исходящих писем", "REST SMTP API (provider)")
+Rel(CallcenterService, CompanyDatabase, "Данные инцидентов", "SQL")
+Rel(CallcenterService, EventBus, "События тикетов/сообщений: TicketCreated, MessageAdded, TicketClosed", "Kafka/NATS")
+
+Rel(ApiGateway, AuthService, "Запрос JWKS", "HTTPS")
+Rel(ApiGateway, UserService, "Управление данными пользователя", "HTTPS")
+Rel(ApiGateway, BillingService, "Управление подпиской", "HTTPS")
+Rel(ApiGateway, DeviceService, "Управление устройствами", "HTTPS")
+Rel(ApiGateway, CallcenterService, "Управление инцидентами", "HTTPS")
+
+Rel(EventBus, UserService, "[consumer]", "Kafka/NATS")
+
+' Двунаправочная логическая связь устройств и брокера
+Rel(MqttBroker, CompanySensor, "Сбор телеметрии, управление", "MQTT")
+Rel(CompanySensor, MqttBroker, "[publish/subscribe]", "MQTT")
+
+
+@enduml

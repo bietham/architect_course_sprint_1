@@ -1,0 +1,103 @@
+ model {
+    extend company.backend.api-gateway {
+   component gateway-tls-cors 'TLS & CORS' {
+      title 'TLS terminator & CORS'
+      summary 'TLS-терминация и CORS-политики'
+      technology 'HTTPS (TLS 1.2/1.3), HSTS, CORS'
+      style {
+         shape rectangle
+      }
+      }
+
+      component gateway-jwt-jwks 'JWT/JWKS Validator' {
+      title 'Валидатор токенов'
+      summary 'Проверка подписи/срока JWT; фоновая загрузка JWKS'
+      technology 'JWT (RS256/ES256), OIDC Discovery, JWKS Cache'
+      style {
+         shape rectangle
+      }
+      }
+
+      component gateway-routing 'Routing & Transforms' {
+      title 'Маршрутизация и трансформации'
+      summary 'Маршрутизация по путям/методам; header/path rewrite'
+      technology 'Reverse proxy (Envoy/Nginx/Traefik), HTTP/1.1–2'
+      style {
+         shape rectangle
+      }
+      }
+
+      component gateway-ratelimit 'Rate-Limit / WAF' {
+      title 'Ограничения и защита'
+      summary 'Лимиты запросов, базовый WAF/ACL, бот-защита'
+      technology 'Token-bucket/Leaky-bucket, WAF rules'
+      style {
+         shape rectangle
+      }
+      }
+
+      component gateway-admin 'Admin API' {
+      title 'Админ/Health'
+      summary 'Health/ready, конфиг-релод, статус кэшей JWKS'
+      technology 'REST/JSON (internal)'
+      style {
+         shape rectangle
+      }
+      }
+
+      gateway-tls-cors -> gateway-jwt-jwks 'Декод JWT/первичная проверка' {
+  technology 'in-process call'
+}
+
+gateway-jwt-jwks -> company.backend.authorization-service.authz-jwks 'Обновление ключей' {
+  technology 'HTTPS GET /.well-known → /jwks.json (с ETag/Cache-Control)'
+}
+
+gateway-tls-cors -> gateway-ratelimit 'Ограничить входящий трафик' {
+  technology 'in-process hook'
+}
+
+gateway-ratelimit -> gateway-routing 'Пропуск разрешённых запросов' {
+  technology 'in-process call'
+}
+
+gateway-routing -> company.backend.user-service.user-profile-api 'Проксирование запросов' {
+  technology 'HTTPS (mTLS внутри), REST/JSON'
+  description 'Запросы профиля'
+}
+
+gateway-routing -> company.backend.user-service.user-household 'Проксирование запросов' {
+  technology 'HTTPS (mTLS внутри), REST/JSON'
+  description 'CRUD домов'
+}
+
+gateway-routing -> company.backend.device-service 'Проксирование запросов' {
+  technology 'HTTPS (mTLS внутри), REST/JSON / WS upgrade'
+}
+
+gateway-routing -> company.backend.billing-service 'Проксирование запросов' {
+  technology 'HTTPS (mTLS внутри), REST/JSON'
+}
+
+
+gateway-admin -> gateway-jwt-jwks 'Показ статуса JWKS/релоад' {
+  technology 'in-process, REST/JSON (internal)'
+}
+
+gateway-admin -> gateway-routing 'Hot-reload маршрутов/правил' {
+  technology 'in-process, REST/JSON (internal)'
+}
+
+gateway-admin -> gateway-ratelimit 'Обновление лимитов/ACL' {
+  technology 'in-process, REST/JSON (internal)'
+}
+        
+    }
+ }
+
+ views {
+    view gateway of company.backend.api-gateway {
+      title 'Диаграмма компонентов - сервис API gateway - Задание 3'
+        include *
+    }
+ }

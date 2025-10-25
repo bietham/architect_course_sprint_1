@@ -1,0 +1,79 @@
+model {
+    extend company.backend.user-service {
+        component user-profile-api 'Profile API' {
+        title 'Профиль пользователя'
+        summary 'CRUD профиля: имя, аватар, локаль; /me'
+        technology 'REST/JSON'
+        style {
+            shape rectangle
+        }
+        }
+
+        component user-household 'Household Manager' {
+        title 'Домохозяйства'
+        summary 'Создание/изменение своих домов/помещений (без ролей и приглашений)'
+        technology 'REST/JSON'
+        style {
+            shape rectangle
+        }
+        }
+
+        component user-authz-helper 'AuthZ Helper' {
+        title 'Проверка прав/квот'
+        summary 'Проверка владения ресурсом (owner-only) и лимитов по подписке'
+        technology 'REST/JSON или gRPC (internal), кэш entitlements'
+        style {
+            shape rectangle
+        }
+        }
+
+        component user-db 'User DB' {
+        title 'Функции подключения к хранилищу'
+        summary 'profiles, households'
+        technology 'Postgres'
+        style {
+            shape rectangle
+        }
+        }
+
+        user-profile-api -> user-db 'Хранение/чтение профилей' {
+        technology 'SQL (Postgres)'
+        }
+
+        user-household -> user-db 'Хранение/чтение домов' {
+        technology 'SQL (Postgres)'
+        }
+
+        user-db -> company.database 'Вызов функций бд' {
+            technology 'TCP/IP'
+        }
+
+        user-household -> user-authz-helper 'Проверка владения и лимитов' {
+        technology 'in-process call'
+        }
+
+        user-authz-helper -> company.backend.device-service 'Проверка прав на действия с устройствами' {
+        technology 'REST/JSON или gRPC (internal)'
+        }
+
+        user-authz-helper -> company.backend.billing-service 'Получить/обновить entitlements при промахе кэша' {
+        technology 'HTTPS REST/JSON'
+        }
+
+        company.event-bus -> user-profile-api 'Синхронизация профиля (e-mail, статус)' {
+        technology 'Kafka/NATS (consumer)'
+        }
+
+        company.event-bus -> user-authz-helper 'Инвалидация кэша прав' {
+        technology 'Kafka/NATS (consumer)'
+}
+
+    }
+}
+
+views {
+    view user-service of company.backend.user-service {
+        title 'Диаграмма компонентов - сервис профиля  - Задание 3'
+        include *
+    }
+}

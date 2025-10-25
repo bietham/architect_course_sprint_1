@@ -1,0 +1,49 @@
+@startuml
+title Device Credential Issuer — Pairing to MQTT Access (абстракции)
+
+actor "Mobile App" as App
+participant "Provisioning API" as Prov
+participant "Credential Issuer" as Iss
+participant "Device Registry" as Reg
+participant "MQTT Broker\n(Admin/ACL)" as MQTT
+participant "Device" as Dev
+
+== Claim / Bind ==
+App -> Prov: POST /devices/claim {claim_code, serial, household}
+Prov -> Iss: validate claim & request credentials
+Iss -> Reg: verify device(serial) & household ownership
+Reg --> Iss: ok (device record or create)
+Iss -> Iss: choose auth mode (mTLS or device-token)
+
+alt mTLS certificate
+  Iss -> Iss: generate short-lived client cert (X.509)\nsigned by IoT CA
+  Iss -> MQTT: upsert ACL for deviceId (topics)
+  Iss -> Reg: store cert meta / rotation_at
+  Iss --> Prov: credentials {cert, clientId, mqttHost}
+else device token
+  Iss -> Iss: mint device access token (JWT/PASETO)\n+ refresh (short TTL)
+  Iss -> MQTT: upsert ACL for deviceId (topics)
+  Iss -> Reg: store token meta / rotation_at
+  Iss --> Prov: credentials {token, clientId, mqttHost}
+end
+
+Prov --> App: credentials (secure channel)
+App -> Dev: deliver credentials (BLE/SoftAP/DPP)
+
+== Connect to MQTT ==
+Dev -> MQTT: CONNECT (TLS), auth = cert/token
+MQTT --> Dev: CONNACK (accepted)
+Dev -> MQTT: publish state/subscribe commands
+MQTT -> Reg: (optional) LWT/online status hook
+
+== Rotations / Revoke ==
+... later ...
+Iss -> Reg: schedule rotation window
+Iss -> MQTT: update ACL / revoke old cred
+Dev -> MQTT: reconnect with new cred
+
+note right
+Идемпотентность на Iss/Reg.\nACL — минимальные темы per device.
+claim_code одноразовый с TTL.
+end note
+@enduml

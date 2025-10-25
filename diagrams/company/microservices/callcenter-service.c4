@@ -1,0 +1,104 @@
+model {
+    extend company.backend.callcenter-service {
+        component cc-api 'API & Realtime' {
+        title 'HTTP/WS интерфейс'
+        summary 'REST для тикетов и статус агентов; WebSocket поток обновлений'
+        technology 'REST/JSON, WebSocket'
+        style {
+            shape rectangle
+        }
+        }
+
+        component cc-engine 'Ticket Engine' {
+        title 'Движок тикетов'
+        summary 'Очереди/приоритеты, назначение агентам, жизненный цикл, SLA'
+        technology 'Domain logic, in-memory + Redis queues'
+        style {
+            shape rectangle
+        }
+        }
+
+        component cc-mail 'Mailing Adapter' {
+        title 'E-mail адаптер'
+        summary 'Исходящие письма; приём входящих (webhooks); парсинг тредов'
+        technology 'REST SMTP API, HTTPS webhooks'
+        style {
+            shape rectangle
+        }
+        }
+
+        component cc-db 'Callcenter DB' {
+        title 'Функции подключения к хранилищу'
+        summary 'tickets, messages, agents, queue snapshots'
+        technology 'Postgres'
+        style {
+            shape rectangle
+        }
+        }
+
+        component cc-redis 'Callcenter Redis' {
+        title 'Redis для очередей обращений'
+        summary 'tickets, messages, agents, queue snapshots'
+        technology 'Redis'
+        style {
+            shape storage
+        }
+        }
+        company.app.operatorApp -> company.backend.api-gateway 'Операторские запросы к callcenter через Gateway' {
+            technology 'HTTPS, WebSocket'
+            }
+        company.backend.api-gateway -> cc-api 'Проксирование HTTP/WS' {
+        technology 'HTTPS (mTLS внутри), REST/JSON, WebSocket upgrade'
+        }
+
+        cc-api -> cc-engine 'Создание/обновление тикета, запрос назначения' {
+        technology 'in-process call'
+        }
+
+        cc-api -> cc-db 'Чтение/запись данных' {
+        technology 'SQL (Postgres)'
+        }
+
+        cc-api -> company.backend.user-service.user-profile-api 'Доп. сведения о клиенте/доме (опц.)' {
+        technology 'REST/JSON (internal)'
+        }
+        cc-engine -> mailing 'Отправка исходящих писем' {
+        technology 'REST SMTP API (provider)'
+        }
+
+        mailing -> cc-mail 'Входящие письма/реплаи (webhooks)' {
+        technology 'HTTPS webhooks (signed)'
+        }
+
+        cc-mail -> cc-engine 'Создать/добавить сообщение к тикету' {
+        technology 'in-process call'
+        }
+
+        cc-mail -> cc-db 'Лог исходящих/входящих писем' {
+        technology 'SQL (Postgres)'
+        }
+
+        cc-engine -> cc-db 'Запись состояния/снапшотов очереди' {
+        technology 'SQL (Postgres)'
+        }
+        cc-engine -> cc-redis 'Запись состояния/снапшотов очереди' {
+        technology 'Redis (queues)'
+        }
+
+        cc-engine -> company.event-bus 'События тикетов/сообщений' {
+        technology 'Kafka/NATS: TicketCreated, MessageAdded, TicketClosed'
+        }
+        cc-db -> company.database 'Вызов функции хранилища' {
+            technology 'SQL (Postgres)'
+        }
+        
+    }
+}
+
+views {
+    view callcenter-service of company.backend.callcenter-service {
+        title 'Диаграмма компонентов - сервис поддержки - задание 3'
+        include *,
+        company.app.operatorApp
+    }
+}
