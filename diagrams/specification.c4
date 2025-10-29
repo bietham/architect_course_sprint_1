@@ -1,0 +1,116 @@
+specification {
+    element user {
+        title 'Пользователь'
+        style {
+            shape person
+            color secondary
+        }
+    }
+
+    element company {
+        title 'Компания Умный дом'
+        style {
+            color slate
+        }
+    }
+
+    element technician {
+
+        title 'Специалист по подключению'
+        style {
+            shape person
+            color green
+        }
+    }
+
+    element operator {
+        title 'Оператор поддержки'
+        style {
+            shape person
+            color amber
+        }
+    }
+    element operatorApp {
+        title 'Приложение операторов'
+        style {
+            shape browser
+            color amber
+        }
+    }
+
+    element mobileApp {
+        title 'Мобильное приложение'
+        style {
+            shape mobile
+            color secondary
+        }
+    }
+
+    element webApp {
+        title 'Веб-приложение'
+        style {
+            shape browser
+            color secondary
+        }
+    }
+
+    element database {
+        title 'База данных'
+        technology 'PostgreSQL'
+        summary 'Контейнер для основной базы данных умного дома'
+        style {
+            shape storage
+                        color secondary
+        }
+    }
+
+    element backend {
+        style {
+            shape rectangle
+
+        }
+    }
+
+    element external {
+        #external
+        style {
+            shape rectangle
+            color muted
+        }
+    }
+
+    element sensor {
+        title 'Датчик умного дома'
+        summary 'Устройства подключаемые к системе умного дома'
+        style {
+            shape rectangle
+            color slate
+        }
+    }
+
+    element broker {
+        style {
+            shape queue
+            color indigo
+        }
+    }
+
+    element component {
+        style {
+            shape rectangle
+            color secondary
+            size small
+        }
+    }
+
+    element container {
+        style {
+            shape rectangle
+        }
+    }
+
+    element microservice
+
+    tag external
+
+}

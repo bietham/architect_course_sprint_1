@@ -1,5 +1,21 @@
+-- Create app user (if not exists)
+DO
+$$
+BEGIN
+   IF NOT EXISTS (
+      SELECT FROM pg_catalog.pg_roles WHERE rolname = 'smart'
+   ) THEN
+      CREATE ROLE smart WITH LOGIN PASSWORD 'smart_pass';
+   END IF;
+END
+$$;
+
+
 -- Create the database if it doesn't exist
 CREATE DATABASE smarthome;
+
+-- Grant privileges
+GRANT ALL PRIVILEGES ON DATABASE smarthome TO smart;
 
 -- Connect to the database
 \c smarthome;

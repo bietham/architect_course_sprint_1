@@ -1,0 +1,383 @@
+openapi: 3.1.0
+info:
+  title: Device Service — Command  API
+  version: 1.0.0
+  description: >
+    Синхронный REST API для работы с устройствами:
+    - привязка устройства к дому (claim)
+    - получение устройства и состояния
+    - отправка команд и получение результата
+
+servers:
+  - url: https://api.smart-home.local/device
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Devices
+    description: Операции с устройствами
+  - name: Commands
+    description: Отправка команд устройствам
+
+paths:
+  /devices:
+    get:
+      tags: [Devices]
+      summary: Список устройств
+      description: Возвращает устройства, при желании отфильтрованные по `house_id`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: house_id
+          schema: { type: string, format: uuid }
+          description: Ограничить список устройствами конкретного дома
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+          description: Курсор постраничной пагинации
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceList' }
+              examples:
+                ok:
+                  value:
+                    items:
+                      - id: "68e0b2dc-8e8c-4e4b-8d9c-1b1dfe8c8a00"
+                        house_id: "9b1aa2c0-1e3e-4c71-9e56-3a2c7f2f0001"
+                        device_type_id: "4d3d2a7b-1a2b-4c5d-9e7f-112233445566"
+                        serial_number: "SN-1234567890"
+                        status: "online"
+                        last_seen_at: "2025-10-22T21:42:10Z"
+                    next_cursor: null
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /devices/{id}:
+    get:
+      tags: [Devices]
+      summary: Получить устройство
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+              examples:
+                ok:
+                  value:
+                    id: "68e0b2dc-8e8c-4e4b-8d9c-1b1dfe8c8a00"
+                    house_id: "9b1aa2c0-1e3e-4c71-9e56-3a2c7f2f0001"
+                    device_type_id: "4d3d2a7b-1a2b-4c5d-9e7f-112233445566"
+                    serial_number: "SN-1234567890"
+                    status: "online"
+                    last_seen_at: "2025-10-22T21:42:10Z"
+                    meta: { fw: "1.2.3", ip: "192.168.1.55" }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /devices/{id}/state:
+    get:
+      tags: [Devices]
+      summary: Текущее состояние устройства (Device Shadow)
+      description: Возвращает последнее состояние
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceState' }
+              examples:
+                ok:
+                  value:
+                    device_id: "68e0b2dc-8e8c-4e4b-8d9c-1b1dfe8c8a00"
+                    reported: { switch: true, brightness: 64, temperature: 22.4 }
+                    desired: null
+                    updated_at: "2025-10-22T21:42:09Z"
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /devices/{id}/commands:
+    post:
+      tags: [Commands]
+      summary: Отправить команду устройству
+      description: >
+        Синхронно ставит команду в очередь 
+        Если `wait_for_ack=true`, сервер ждёт до `ack_timeout_ms` (по умолчанию 3000 мс).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: wait_for_ack
+          schema: { type: boolean, default: true }
+        - in: query
+          name: ack_timeout_ms
+          schema: { type: integer, minimum: 100, maximum: 10000, default: 3000 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandRequest' }
+            examples:
+              switch_on:
+                value:
+                  op: "switch.set"
+                  payload: { value: true }
+                  idempotency_key: "req-20251022-0001"
+              dimm:
+                value:
+                  op: "level.set"
+                  payload: { value: 42 }
+      responses:
+        '202':
+          description: Команда поставлена, ACK не ожидали
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandAccepted' }
+              examples:
+                queued:
+                  value:
+                    command_id: "c2d9e5d8-0e0a-4f8c-9b0d-22a1e9f0a111"
+                    status: "queued"
+        '200':
+          description: Команда подтверждена (ACK OK/FAILED/TIMEOUT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandResult' }
+              examples:
+                ack_ok:
+                  value:
+                    command_id: "c2d9e5d8-0e0a-4f8c-9b0d-22a1e9f0a111"
+                    status: "ok"
+                    details: { latency_ms: 124 }
+                ack_failed:
+                  value:
+                    command_id: "c2d9e5d8-0e0a-4f8c-9b0d-22a1e9f0a112"
+                    status: "failed"
+                    details: { reason: "unsupported_operation" }
+                ack_timeout:
+                  value:
+                    command_id: "c2d9e5d8-0e0a-4f8c-9b0d-22a1e9f0a113"
+                    status: "timeout"
+                    details: { waited_ms: 3000 }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Конфликт идемпотентности (повтор той же команды)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                conflict:
+                  value: { code: "IDEMPOTENCY_CONFLICT", message: "Command with same idempotency_key exists" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /devices/claim:
+    post:
+      tags: [Devices]
+      summary: Привязка устройства (claim/bind)
+      description: >
+        Обменивает одноразовый `claim_code` и `serial_number` на привязку устройства к дому и
+        выдаёт параметры подключения. Этот вызов делает **мобильное приложение** (после локальной
+        настройки устройства по Bluetooth).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claim_code, serial_number, house_id]
+              properties:
+                claim_code: { type: string, minLength: 6, maxLength: 64 }
+                serial_number: { type: string, minLength: 3, maxLength: 128 }
+                house_id: { type: string, format: uuid }
+            examples:
+              ok:
+                value:
+                  claim_code: "ABCD-1234-XY"
+                  serial_number: "SN-1234567890"
+                  house_id: "9b1aa2c0-1e3e-4c71-9e56-3a2c7f2f0001"
+      responses:
+        '200':
+          description: Устройство привязано, выданы параметры подключения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClaimResponse' }
+              examples:
+                token_mode:
+                  value:
+                    device_id: "68e0b2dc-8e8c-4e4b-8d9c-1b1dfe8c8a00"
+                    mqtt:
+                      host: "mqtt.smart-home.local"
+                      client_id: "dev-68e0b2dc"
+                    credentials:
+                      type: "token"
+                      access_token: "eyJhbGciOiJSUzI1NiIs..."
+                      expires_in: 1800
+                mtls_mode:
+                  value:
+                    device_id: "68e0b2dc-8e8c-4e4b-8d9c-1b1dfe8c8a00"
+                    mqtt:
+                      host: "mqtt.smart-home.local"
+                      client_id: "dev-68e0b2dc"
+                    credentials:
+                      type: "mtls"
+                      cert_pem: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+                      key_pem: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+                      expires_at: "2026-01-01T00:00:00Z"
+        '400':
+          description: Некорректные данные или протухший claim_code
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                expired:
+                  value: { code: "CLAIM_EXPIRED", message: "Claim code expired or already used" }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Требуется действующий токен доступа
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            unauth:
+              value: { code: "UNAUTHORIZED", message: "Bearer token is missing or invalid" }
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            not_found:
+              value: { code: "NOT_FOUND", message: "Device not found" }
+
+  schemas:
+    Device:
+      type: object
+      required: [id, house_id, device_type_id, serial_number, status]
+      properties:
+        id: { type: string, format: uuid }
+        house_id: { type: string, format: uuid }
+        device_type_id: { type: string, format: uuid }
+        serial_number: { type: string }
+        status: { type: string, enum: [online, offline, fault, disabled] }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        meta:
+          type: object
+          additionalProperties: true
+    DeviceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Device' }
+        next_cursor:
+          type: string
+          nullable: true
+    DeviceState:
+      type: object
+      required: [device_id, reported, updated_at]
+      properties:
+        device_id: { type: string, format: uuid }
+        reported:
+          type: object
+          description: Последнее известное состояние (free-form JSON)
+          additionalProperties: true
+        desired:
+          type: object
+          nullable: true
+          additionalProperties: true
+        updated_at: { type: string, format: date-time }
+    CommandRequest:
+      type: object
+      required: [op, payload]
+      properties:
+        op:
+          type: string
+          description: Имя операции (напр., switch.set, level.set, thermostat.set)
+        payload:
+          type: object
+          description: Параметры операции (свободная схема)
+          additionalProperties: true
+        module_id:
+          type: string
+          format: uuid
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+          description: Ключ идемпотентности — защитит от дубликатов
+    CommandAccepted:
+      type: object
+      required: [command_id, status]
+      properties:
+        command_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued] }
+    CommandResult:
+      type: object
+      required: [command_id, status]
+      properties:
+        command_id: { type: string, format: uuid }
+        status: { type: string, enum: [ok, failed, timeout] }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+    ClaimResponse:
+      type: object
+      required: [device_id, mqtt, credentials]
+      properties:
+        device_id: { type: string, format: uuid }
+        mqtt:
+          type: object
+          required: [host, client_id]
+          properties:
+            host: { type: string }
+            client_id: { type: string }
+        credentials:
+          oneOf:
+            - type: object
+              properties:
+                type: { const: token }
+                access_token: { type: string }
+                expires_in: { type: integer }
+              required: [type, access_token, expires_in]
+            - type: object
+              properties:
+                type: { const: mtls }
+                cert_pem: { type: string }
+                key_pem: { type: string }
+                expires_at: { type: string, format: date-time }
+              required: [type, cert_pem, key_pem, expires_at]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }

@@ -1,0 +1,51 @@
+@startuml
+!include <c4/C4_Component.puml>
+
+title Диаграмма компонентов — сервис поддержки — Задание 3
+
+' ===== Внешние системы/клиенты =====
+System_Ext(Mailing, "Внешний email провайдер", "SMTP/REST", "Исходящие письма и входящие webhooks")
+System_Ext(OperatorApp, "Приложение операторов", "Web", "Интерфейс операторов")
+Container(CompanyBackendApiGateway, "API gateway", "Go", "Валидация и маршрутизация запросов")
+Container(CompanyBackendUserService, "User-service", "Go", "Сведения о клиенте/доме")
+ContainerQueue(CompanyBackendEventBus, "Event-bus", "Kafka / NATS", "Коммуникация между сервисами")
+ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Общее хранилище (функции/процедуры)")
+
+' ===== Контейнер сервиса поддержки и его компоненты =====
+Container_Boundary(CompanyBackendCallcenterService, "Сервис клиентской поддержки (Callcenter-service)") {
+
+  Component(Cc_Mailing, "Mailing Adapter", "REST SMTP API, HTTPS webhooks","Исходящие письма; приём входящих (webhooks); парсинг тредов")
+
+  Component(Cc_API, "API & Realtime", "REST/JSON, WebSocket","REST для тикетов и статусов агентов; поток обновлений по WS")
+
+  Component(Cc_Engine, "Ticket Engine", "Domain logic, in-memory + Redis queues","Очереди/приоритеты, назначение агентам, жизненный цикл, SLA")
+
+  ComponentDb(Cc_DB, "Callcenter DB", "PostgreSQL","tickets, messages, agents, queue snapshots")
+
+  ComponentDb(Cc_Redis, "Callcenter Redis", "Redis","Очереди/кэш состояний, снапшоты очереди")
+}
+
+' ===== Взаимодействие клиентов и шлюза =====
+Rel(OperatorApp, CompanyBackendApiGateway, "Операторские запросы к callcenter через Gateway", "HTTPS, WebSocket")
+Rel(CompanyBackendApiGateway, Cc_API, "Проксирование HTTP/WS", "HTTPS (mTLS), REST/JSON, WebSocket upgrade")
+
+' ===== E-mail провайдер =====
+Rel(Mailing, Cc_Mailing, "Входящие письма/реплаи (webhooks)", "HTTPS webhooks (signed)")
+Rel(Cc_Engine, Mailing, "Отправка исходящих писем", "REST SMTP API (provider)")
+
+' ===== Внутренние связи сервиса поддержки =====
+Rel(Cc_API, Cc_Engine, "Создание/обновление тикета, запрос назначения", "in-process")
+Rel(Cc_API, Cc_DB, "Чтение/запись данных", "SQL (PostgreSQL)")
+Rel(Cc_Engine, Cc_DB, "Запись состояния/снапшотов очереди", "SQL (PostgreSQL)")
+Rel(Cc_Engine, Cc_Redis, "Состояния/очереди", "Redis (queues)")
+Rel(Cc_Mailing, Cc_Engine, "Создать/добавить сообщение к тикету", "in-process")
+Rel(Cc_Mailing, Cc_DB, "Лог исходящих/входящих писем", "SQL (PostgreSQL)")
+
+' ===== Интеграции с другими сервисами =====
+Rel(Cc_API, CompanyBackendUserService, "Доп. сведения о клиенте/доме (опц.)", "REST/JSON (internal)")
+Rel(Cc_Engine, CompanyBackendEventBus, "События тикетов/сообщений: TicketCreated, MessageAdded, TicketClosed", "Kafka/NATS")
+
+' ===== Доступ к общей БД =====
+Rel(Cc_DB, CompanyDatabase, "Вызов функций хранилища", "SQL (PostgreSQL)")
+
+@enduml

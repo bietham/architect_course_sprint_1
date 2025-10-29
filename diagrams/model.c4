@@ -1,0 +1,96 @@
+
+model {
+    user customer 'Клиент'
+    external banking {
+        title 'Платежная  система'
+        description 'Внешняя система для обработки платежей'
+    }
+    external mailing {
+        title 'Внешний email провайдер'
+        summary "Отправка email сообщений с OTP кодом клиентам"
+    }
+
+    mailing -> app 'Отправка кода/ссылки клиенту' {
+            technology 'SMTP'
+        }
+
+    company company 'Умный дом'{
+        technician technician
+        operator operator
+        container app 'Приложения'{
+            mobileApp mobileApp
+            webApp webApp
+            operatorApp operatorApp
+        }
+        
+        database database
+        backend backend
+        sensor sensor
+
+
+
+        customer -> mobileApp 'Использует мобильное приложение'
+        customer -> webApp 'Использует веб-интерфейс'
+        operator -> operatorApp 'Использует веб-интерфейс для оказания поддержки'
+        
+
+        
+
+        backend -> database 'Читает и обновляет информацию о датчиках'
+        backend -> sensor 'Запрашивает значение температуры'
+
+        technician -> customer 'Приходит домой для установки'
+        technician -> sensor 'Устанавливает датчики' 
+        technician -> backend 'Записывает информацию о датчиках' 
+    }
+    
+
+}
+
+views {
+    view context of company {
+        title 'Диаграмма контекста - Задание 1'
+        description 'Диагармма контекста AS-IS решения для задания 1'
+        include 
+            *, 
+            customer, 
+            company,
+            company.app.*,
+            company.backend with {
+                title 'smart-home app'
+                technology 'Go'
+                description 'Монолитное приложение на Go'
+            },  
+        exclude
+            * -> *
+            where
+            tag == #external,
+            *
+            where
+            tag == #external,
+            company.backend.*,
+            operator,
+            operatorApp
+
+    }
+
+
+    view   of company {
+        title 'Диаграмма контейнеров - Задание 2'
+        description 'Диаграмма контейнеров TO-BE решения для задания 2'
+        include 
+            *,
+            customer, 
+            banking,
+            company,
+            mailing,
+            company.backend.*,
+        exclude *
+            where 
+                kind is technician,
+
+            
+    }
+
+    
+}

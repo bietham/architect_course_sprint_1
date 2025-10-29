@@ -1,0 +1,114 @@
+model {
+    extend company.backend.billing-service {
+        component bill-plans 'Plan Catalog' {
+        title 'Каталог планов'
+        summary 'Витрина тарифов/цен; публичное чтение'
+        technology 'REST/JSON'
+        style {
+            shape rectangle
+        }
+        }
+
+        component bill-checkout 'Checkout/Portal Adapter' {
+        title 'Оплата/Портал'
+        summary 'Создание checkout-сессий; ссылки в клиентский портал провайдера'
+        technology 'HTTPS SDK/REST провайдера (Stripe/ЮKassa/Adyen)'
+        style {
+            shape rectangle
+        }
+        }
+
+        component bill-webhooks 'Webhook Receiver' {
+        title 'Вебхуки провайдера'
+        summary 'Приём событий оплаты/подписок; верификация подписи; идемпотентность'
+        technology 'REST/JSON (HMAC/строковая подпись)'
+        style {
+            shape rectangle
+        }
+        }
+
+        component bill-subs 'Subscription Manager' {
+        title 'Жизненный цикл подписки'
+        summary 'Создание/обновление подписок, grace-доступ, dunning/повторы списаний'
+        technology 'Domain logic + scheduler (in-process)'
+        style {
+            shape rectangle
+        }
+        }
+
+        component bill-ent 'Entitlements API' {
+        title 'Права и квоты'
+        summary 'Расчёт и выдача прав (features/limits) по household; снапшоты и кэш'
+        technology 'REST/JSON'
+        style {
+            shape rectangle
+        }
+        }
+
+        component bill-db 'Billing DB' {
+        title 'Функции подключения к хранилищу'
+        summary 'plans, subscriptions, invoices/payments, entitlements'
+        technology 'Postgres (+ Redis для кэша прав)'
+        style {
+            shape rectangle
+        }
+        }
+
+
+            company.backend.api-gateway -> bill-plans 'Проксирование витрины тарифов' {
+            technology 'HTTPS (mTLS внутри), REST/JSON'
+            }
+
+            company.backend.api-gateway -> bill-checkout 'Создание оплаты/портала' {
+            technology 'HTTPS (mTLS внутри), REST/JSON'
+            }
+
+            company.backend.api-gateway -> bill-ent 'Получение прав/квот' {
+            technology 'HTTPS (mTLS внутри), REST/JSON'
+            }
+
+            bill-plans -> bill-db 'Чтение планов/цен' {
+            technology 'SQL (Postgres)'
+            }
+
+            bill-checkout -> banking 'Создание checkout/portal-сессии' {
+            technology 'HTTPS SDK/REST'
+            }
+
+            banking -> bill-webhooks 'События оплаты/подписок' {
+            technology 'HTTPS POST (подписанные вебхуки)'
+            }
+
+            bill-webhooks -> bill-subs 'Применение событий (идемпотентно)' {
+            technology 'in-process call'
+            }
+
+            bill-subs -> bill-db 'Запись/обновление подписок, счетов' {
+            technology 'SQL (Postgres)'
+            }
+
+            bill-subs -> bill-ent 'Пересчёт прав после изменения подписки' {
+            technology 'in-process call'
+            }
+
+            bill-ent -> bill-db 'Чтение/запись снапшотов прав' {
+            technology 'SQL (Postgres) + Redis cache'
+            }
+
+            bill-db -> company.database 'Вызов функций в хранилище' {
+                technology 'SQL (Postgres'
+            }
+
+            bill-subs -> company.event-bus 'Публикация событий' {
+            technology 'Kafka/NATS: SubscriptionActivated/Updated/Canceled, EntitlementsChanged'
+            }
+
+    }
+}
+
+views {
+    view billing-service of company.backend.billing-service {
+        title 'Диаграмма компонентов - сервис подписок - Задание 3'
+        include *
+    }
+}

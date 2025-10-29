@@ -1,0 +1,140 @@
+model {
+    extend company.backend {
+        microservice api-gateway {
+            title 'API gateway'
+            summary 'Сервис по валидации, маршрутизации запросов'
+            technology 'Go' 
+        }
+        microservice authorization-service {
+            title 'Сервис аутентефикации'
+            summary 'Сервис для регистрации, логина, аутентефикации пользователей'
+            technology 'Go' 
+        }
+        microservice user-service {
+            title 'Сервис профиля'
+            summary 'Сервис для управления профилем пользователя'
+            technology 'Go' 
+        }
+        microservice billing-service {
+            title 'Сервис подписок'
+            summary 'Сервис по управлению & оплаты подписки'
+            technology 'Go' 
+        }
+        microservice device-service {
+            title 'Сервис устройств'
+            summary 'Сервис по управлению устройствами умного дома'
+            technology 'Go' 
+        }
+        microservice callcenter-service {
+            title 'Сервис клиентской поддержки'
+            summary 'Сервис по обработке инцидентов и чатов с пользователем'
+            technology 'Go'
+        }
+
+        broker mqttBroker {
+            title 'MQTT Брокер сообщений'
+            summary 'Коммуникация между сервисом устройств и самими устройствами'
+            technology 'EMQX'
+        }
+
+        broker event-bus {
+            title 'Event-bus'
+            summary 'Коммуникация между сервисами'
+        }
+    }
+    extend company {
+    webApp -> authorization-service.authz-authorization 'Клиентские запросы к authorization-service' {
+        technology 'HTTPS'
+        description '''
+        1. Запрос авторизации (code+PKCE)
+        2. Обмен кода на токены
+        3. Обновление токенов (refresh)
+        4. Отзыв refresh
+        '''
+        }
+    webApp -> api-gateway.gateway-tls-cors 'Проверка токена, маршрутизация запроса'{
+        technology 'HTTPS'
+    }
+
+    mobileApp -> authorization-service.authz-authorization 'Клиентские запросы к authorization-service' {
+        technology 'HTTPS'
+        description '''
+        1. Запрос авторизации (code+PKCE)
+        2. Обмен кода на токены
+        3. Обновление токенов (refresh)
+        4. Отзыв refresh
+        '''
+        }
+
+
+    mobileApp -> api-gateway.gateway-tls-cors 'Проверка токена, маршрутизация запроса'{
+        technology 'HTTPS'
+    }
+    mobileApp -> sensor 'Покдлючение к умному дому' {
+        #external
+        technology 'BLE'
+    }
+
+    operatorApp -> api-gateway.gateway-tls-cors 'Проверка токена, маршрутизация запроса'{
+        technology 'HTTPS'
+    }
+    operatorApp -> authorization-service.authz-authorization 'Клиентские запросы к authorization-service' {
+        technology 'HTTPS'
+        description '''
+        1. Запрос авторизации (code+PKCE)
+        2. Обмен кода на токены
+        3. Обновление токенов (refresh)
+        4. Отзыв refresh
+        '''
+        }
+
+    api-gateway -> authorization-service'Запрос JWKS'{
+        technology 'HTTPS'
+    } 
+    api-gateway -> user-service 'Управление данными пользователя'{
+        technology 'HTTPS'
+    }
+    api-gateway -> billing-service 'Управление подпиской'{
+        technology 'HTTPS'
+    }
+    api-gateway -> device-service 'Управление устройствами умного дома'{
+        technology 'HTTPS'
+    }
+    api-gateway -> callcenter-service 'Управление инцидентами' {
+        technology 'HTTPS'
+    }
+
+    user-service -> database 'Управление данными пользователя' {
+        technology 'SQL'
+    }
+
+    billing-service -> banking 'Обработка платежей' {
+        technology 'HTTPS'
+    }
+    billing-service -> database 'Управление данными о подписке пользователя' {
+        technology 'SQL'
+    }
+
+    device-service -> database 'Управление данными об устройствах пользователя' {
+        technology 'SQL'
+    }
+        device-service -> mqttBroker 'Управление устройствами, сбор телеметрии' {
+        technology 'MQTT'
+    }
+    mqttBroker -> sensor 'Сбор телеметрии, управление устройствами' {
+        technology 'MQTT'
+    }
+
+    authorization-service -> database 'Управление данными об авторизации пользователя' {
+        technology 'SQL'
+    }
+    
+
+
+    callcenter-service -> database 'Управление данными инцидентов' {
+        technology 'SQL'
+    }
+
+
+    }
+}

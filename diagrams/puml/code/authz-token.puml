@@ -1,0 +1,76 @@
+@startuml
+title Token Endpoint (authorization-service) — Class Diagram
+
+class TokenEndpoint {
+  +issueTokens(authCode, codeVerifier): TokenSet
+  +refreshTokens(refreshToken): TokenSet
+  +revoke(token): void
+  +introspect(token): TokenIntrospection
+}
+
+class TokenSet {
+  +accessToken: string
+  +refreshToken: string
+  +idToken: string
+  +expiresIn: int
+}
+
+class GrantValidator {
+  +validateAuthCode(authCode, codeVerifier): AuthContext
+  +validateRefresh(refreshToken): AuthContext
+  +validateClient(clientId, secret?): Client
+}
+
+class AuthContext {
+  +subject: Subject
+  +scopes: Set<String>
+  +amr: List<String>  'methods (pwd, mfa, passkey)
+  +claims: Map<String, Any>
+}
+
+class Subject {
+  +userId: String
+  +status: Status
+  +tenantId: String
+}
+
+enum Status {
+  Active
+  Blocked
+  Deleted
+}
+
+class KeyManager {
+  +signJWT(payload, header): string
+  +currentKeyId(): String
+  +rotateIfNeeded(): void
+}
+
+class TokenStore {
+  +persistRefresh(subject, token, meta): void
+  +rotateRefresh(old, new): void
+  +revoke(token): void
+  +isRevoked(token): bool
+}
+
+class ScopePolicy {
+  +filter(scopes, subject, client): Set<String>
+  +enrichClaims(subject, scopes): Map<String, Any>
+}
+
+class ClockSkew {
+  +now(): Instant
+  +leeway(): Duration
+}
+
+TokenEndpoint --> GrantValidator : validate grant
+TokenEndpoint --> ScopePolicy : compute scopes/claims
+TokenEndpoint --> KeyManager : sign access/id tokens
+TokenEndpoint --> TokenStore : store/rotate/revoke refresh
+GrantValidator --> TokenStore : check refresh validity
+GrantValidator --> Subject : builds from identity store (abstract)
+TokenEndpoint --> ClockSkew : exp/iat calculation
+TokenSet "1" o-- "1" AuthContext : derived from
+
+
+@enduml

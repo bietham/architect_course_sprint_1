@@ -1,0 +1,51 @@
+@startuml
+!include <c4/C4_Component.puml>
+
+title Диаграмма компонентов — сервис устройств — Задание 3
+
+
+' ===== Внешние контейнеры/системы =====
+Container(CompanyBackendApiGateway, "API gateway", "Go", "Валидация и маршрутизация запросов")
+ContainerQueue(CompanyBackendMqttBroker, "MQTT брокер сообщений", "EMQX / MQTT", "Коммуникация сервиса устройств с устройствами")
+Container(CompanyBackendUserService, "User-service", "Go", "Управление профилем/владением, квоты")
+ContainerQueue(CompanyBackendEventBus, "Event-bus", "Kafka / NATS", "Коммуникация между сервисами")
+ContainerDb(CompanyDatabase, "База данных", "PostgreSQL", "Основная БД умного дома")
+
+' ===== Контейнер сервиса устройств и его компоненты =====
+Container_Boundary(CompanyBackendDeviceService, "Сервис устройств") {
+  Component(Dev_Provisioning, "Provisioning API", "REST/JSON (HTTPS)", "Claim/bind/unbind устройства к дому; первичная регистрация")
+  Component(Dev_Command, "Command Dispatcher", "HTTP→MQTT bridge, QoS1", "REST→MQTT команды, идемпотентность, ожидание ACK/timeout")
+  Component(Dev_Telemetry, "Telemetry Ingest", "MQTT QoS1, async", "Приём state/metrics из MQTT; буфер, фильтры, события")
+  Component(Dev_CredIssuer, "Credential Issuer", "JWT/PASETO, X.509 mTLS, ACL", "Выпуск device-token или mTLS cert; ротация; синхронизация ACL брокера")
+  ComponentDb(Dev_Shadow, "Device State (shadow)", "Redis/PostgreSQL cache", "Последнее состояние, retain; поток обновлений")
+  Component(Dev_Registry, "Device Registry & DB", "PostgreSQL", "devices, bindings, capabilities, cred/meta; журналы команд")
+}
+
+' ===== Связи с API gateway =====
+Rel(CompanyBackendApiGateway, Dev_Provisioning, "Проксирование claim/bind/unbind", "HTTPS, REST/JSON (mTLS)")
+Rel(CompanyBackendApiGateway, Dev_Command,      "Проксирование команд",           "HTTPS, REST/JSON (mTLS)")
+Rel(CompanyBackendApiGateway, Dev_Shadow,       "Получение состояния/поток",      "HTTPS, REST/JSON / WebSocket")
+
+' ===== Связи с MQTT брокером =====
+Rel(CompanyBackendMqttBroker, Dev_Command,  "Получение ACK/результатов", "MQTT subscribe")
+Rel(CompanyBackendMqttBroker, Dev_Telemetry,"Поставка state/telemetry",  "MQTT subscribe (QoS1, retain)")
+Rel(Dev_CredIssuer, CompanyBackendMqttBroker, "Синхронизация ACL/учёток брокера", "Broker admin API / plugin")
+Rel(Dev_Command, CompanyBackendMqttBroker, "Публикация команд устройству", "MQTT publish (QoS1)")
+
+' ===== Внутренние связи сервиса устройств =====
+Rel(Dev_Provisioning, Dev_CredIssuer, "Запрос на выпуск учётных данных", "in-process")
+Rel(Dev_Provisioning, Dev_Registry,   "Создание/обновление записи устройства", "SQL (PostgreSQL)")
+Rel(Dev_CredIssuer,   Dev_Registry,   "Сохранение cred/bindings", "SQL (PostgreSQL)")
+Rel(Dev_Command,      Dev_Registry,   "Логирование команд/результатов", "SQL (PostgreSQL)")
+Rel(Dev_Shadow,       Dev_Registry,   "Чтение/запись состояния/мета", "SQL / cache")
+Rel(Dev_Telemetry,    Dev_Shadow,     "Обновление тени (последнего состояния)", "in-process / cache update")
+
+' ===== Взаимодействие с другими сервисами =====
+Rel(Dev_Provisioning, CompanyBackendUserService, "Проверка владения и квот", "REST/JSON (internal)")
+Rel(Dev_Provisioning, CompanyBackendEventBus,    "События пары/отвязки (DevicePaired, DeviceUnpaired)", "Kafka/NATS")
+Rel(Dev_Telemetry,    CompanyBackendEventBus,    "События состояния/алертов (DeviceStateChanged, DeviceAlert)", "Kafka/NATS")
+
+' ===== Доступ к общей БД =====
+Rel(Dev_Registry, CompanyDatabase, "Вызов функций/хранение данных", "SQL (PostgreSQL)")
+
+@enduml
