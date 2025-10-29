@@ -19,10 +19,17 @@ entity "User" as user {
   updated_at : timestamptz
 }
 
-entity "House" as house {
+entity "User-to-House" as userToHouse {
   * id : UUID
   --
   owner_user_id : UUID <<FK user.id>>
+  house_id : UUID <<FK house.id>>
+
+}
+
+entity "House" as house {
+  * id : UUID
+  --
   name : varchar(120)
   address : text?
   timezone : varchar(64)
@@ -162,7 +169,8 @@ entity "Subscription" as sub {
 
 ' СВЯЗИ 
 
-user ||--o{ house : "владеет"
+user ||--o{ userToHouse : "владеет"
+house ||--|{ userToHouse : "принадлежит"
 house ||--o{ room  : "содержит"
 house ||--o{ device : "содержит"
 room  |o--o{ device : "вмещает"
